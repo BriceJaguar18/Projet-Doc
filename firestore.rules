@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// Règles de sécurité du Kiosque à Pizzas.
+// À coller dans Firebase > Firestore Database > Règles, puis « Publier ».
+//
+// Seules les 2 tablettes du kiosque (comptes ci-dessous) peuvent lire ou écrire.
+// Si les adresses des comptes changent, les modifier aussi dans src/config/firebase-config.ts.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isService() {
+      return request.auth != null && request.auth.token.email == 'service@kiosque-frouzins.fr';
+    }
+    function isCuisine() {
+      return request.auth != null && request.auth.token.email == 'cuisine@kiosque-frouzins.fr';
+    }
+    function isKiosque() {
+      return isService() || isCuisine();
+    }
+
+    // Commandes du jour
+    match /orders/{orderId} {
+      allow read: if isKiosque();
+      // Le comptoir crée, modifie et supprime les commandes.
+      allow create, delete: if isService();
+      allow update: if isService()
+        // La cuisine ne peut modifier que l'état des pizzas (Lancer préparation / Au four).
+        || (isCuisine() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pizzas']));
+    }
+
+    // Carte, quotas par défaut, horaires
+    match /config/{docId} {
+      allow read: if isKiosque();
+      allow write: if isService();
+    }
+
+    // Quotas ajustés à la main pour un jour donné
+    match /quotas/{date} {
+      allow read: if isKiosque();
+      allow write: if isService();
+    }
+  }
+}
