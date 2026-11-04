@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { local } from '../data/safeStorage';
 
 /**
  * Petit « bip » joué quand une nouvelle commande arrive.
@@ -7,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  */
 export function useBeep() {
   const ctxRef = useRef<AudioContext | null>(null);
-  const [enabled, setEnabled] = useState(() => localStorage.getItem('kiosque-son') !== 'off');
+  const [enabled, setEnabled] = useState(() => local.get('kiosque-son') !== 'off');
 
   useEffect(() => {
     const unlock = () => {
@@ -43,7 +44,7 @@ export function useBeep() {
 
   const toggle = useCallback(() => {
     setEnabled((e) => {
-      localStorage.setItem('kiosque-son', e ? 'off' : 'on');
+      local.set('kiosque-son', e ? 'off' : 'on');
       return !e;
     });
   }, []);

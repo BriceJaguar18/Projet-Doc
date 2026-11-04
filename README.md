@@ -15,6 +15,7 @@ Application pour **2 tablettes synchronisées en temps réel** :
 - 👉 **[Guide d'installation](docs/GUIDE-INSTALLATION.md)** (Firebase, Netlify, tablettes — pas-à-pas, sans
   connaissances techniques)
 - 👉 **[Mode d'emploi pour l'équipe](docs/GUIDE-UTILISATION.md)**
+- 👉 **[Cahier de recette](docs/RECETTE.md)** (liste de vérifications avant la livraison)
 
 ## Fonctionnement technique (résumé)
 

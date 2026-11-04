@@ -196,6 +196,11 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
               Heure de retrait
               {draft.pickupTime && <span className="chosen-time"> : {draft.pickupTime}</span>}
             </h3>
+            {slots.length === 0 && (
+              <p className="muted">
+                Plus aucun créneau aujourd'hui dans les horaires d'ouverture : indiquez l'heure dans « Autre heure ».
+              </p>
+            )}
             <div className="slot-grid">
               {slots.map((slot) => {
                 const c = checkCapacity(orders, slot, quotaFor(slot, settings, dayQuotas), need, initial?.id);

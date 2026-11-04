@@ -1,5 +1,6 @@
 import { withDefaults } from '../domain/defaultSettings';
 import type { DayQuotas, Order, Role, Settings } from '../domain/types';
+import { local, session } from './safeStorage';
 import { mergeOrderContent, type AuthApi, type ConnectionState, type DaySnapshot, type Store } from './store';
 
 /**
@@ -19,10 +20,10 @@ interface DemoDb {
 
 function load(): DemoDb {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = local.get(KEY);
     if (raw) return JSON.parse(raw) as DemoDb;
   } catch {
-    /* stockage indisponible : on repart de zéro */
+    /* données illisibles : on repart de zéro */
   }
   return { orders: {}, settings: null, quotas: {} };
 }
@@ -39,11 +40,7 @@ export function createDemoStore(): Store {
   function mutate(fn: (db: DemoDb) => void): Promise<void> {
     const db = load();
     fn(db);
-    try {
-      localStorage.setItem(KEY, JSON.stringify(db));
-    } catch {
-      /* ignore */
-    }
+    local.set(KEY, JSON.stringify(db));
     channel?.postMessage('change');
     notifyLocal();
     return Promise.resolve();
@@ -104,7 +101,7 @@ export function createDemoStore(): Store {
 
 /** Efface toutes les données de démo. */
 export function resetDemo() {
-  localStorage.removeItem(KEY);
+  local.remove(KEY);
   if (typeof BroadcastChannel !== 'undefined') new BroadcastChannel(CHANNEL).postMessage('change');
 }
 
@@ -112,7 +109,7 @@ export function resetDemo() {
 export function createDemoAuth(): AuthApi {
   const KEY_ROLE = 'kiosque-demo-role';
   const listeners = new Set<(r: Role | null, ready: boolean) => void>();
-  const get = () => (sessionStorage.getItem(KEY_ROLE) as Role | null) ?? null;
+  const get = () => (session.get(KEY_ROLE) as Role | null) ?? null;
   const emit = () => listeners.forEach((l) => l(get(), true));
   return {
     subscribe(cb) {
@@ -121,11 +118,11 @@ export function createDemoAuth(): AuthApi {
       return () => listeners.delete(cb);
     },
     async signIn(role) {
-      sessionStorage.setItem(KEY_ROLE, role);
+      session.set(KEY_ROLE, role);
       emit();
     },
     async signOut() {
-      sessionStorage.removeItem(KEY_ROLE);
+      session.remove(KEY_ROLE);
       emit();
     },
   };
