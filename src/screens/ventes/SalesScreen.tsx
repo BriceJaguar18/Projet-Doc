@@ -6,8 +6,29 @@ import { frenchDate, ordersInPeriod, salesCsv, servicePeriods, summarizeSales } 
 import type { Order } from '../../domain/types';
 import { navigate } from '../../hooks/useHashRoute';
 
-/** Fait télécharger un fichier par le navigateur (dossier « Téléchargements » de la tablette). */
-function download(filename: string, content: string) {
+interface DownloadsApi {
+  save(req: { filename: string; data: string }): Promise<unknown>;
+}
+
+/**
+ * Enregistre un fichier sur l'appareil (dossier « Téléchargements »).
+ * Dans la démo hébergée par Claude, le téléchargement passe par la fenêtre de confirmation de Claude.
+ * Résout `false` si l'utilisateur a refusé.
+ */
+async function saveFile(filename: string, content: string): Promise<boolean> {
+  const host = (window as { claude?: { use?: (name: string) => Promise<DownloadsApi | null> } }).claude;
+  if (host?.use) {
+    const downloads = await host.use('downloads');
+    if (downloads) {
+      try {
+        await downloads.save({ filename, data: content });
+        return true;
+      } catch (e) {
+        if ((e as { code?: string }).code === 'declined') return false;
+        throw e;
+      }
+    }
+  }
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -17,6 +38,7 @@ function download(filename: string, content: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return true;
 }
 
 /** Récapitulatif des ventes d'un service (midi, soir) ou de la journée, avec export tableur. */
@@ -51,13 +73,17 @@ export function SalesScreen() {
   const sum = useMemo(() => summarizeSales(orders), [orders]);
   const period = periods.find((p) => p.id === periodId) ?? periods[0];
 
-  const exportFile = () => {
+  const exportFile = async () => {
     const slug = period.id === 'jour' ? 'journee' : period.label.split(' ')[0].toLowerCase();
-    download(
-      `ventes-${date}-${slug}.csv`,
-      salesCsv(orders, { date, periodLabel: period.label, exportedAt: new Date() }),
-    );
-    toast('Fichier téléchargé (dossier Téléchargements)');
+    try {
+      const saved = await saveFile(
+        `ventes-${date}-${slug}.csv`,
+        salesCsv(orders, { date, periodLabel: period.label, exportedAt: new Date() }),
+      );
+      if (saved) toast('Fichier téléchargé (dossier Téléchargements)');
+    } catch {
+      toast("Le fichier n'a pas pu être enregistré sur cet appareil.", 'error');
+    }
   };
 
   return (
@@ -68,7 +94,7 @@ export function SalesScreen() {
         </button>
         <button
           className="btn btn-primary btn-lg"
-          onClick={exportFile}
+          onClick={() => void exportFile()}
           disabled={orders.length === 0}
           data-testid="export-sales"
         >
