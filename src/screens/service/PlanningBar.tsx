@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useKiosk } from '../../KioskContext';
 import { Stepper } from '../../components/ui';
-import { fromMinutes, loadLevel, quotaFor, slotLoad, slotOf, slotsForDay, toMinutes } from '../../domain/rules';
-import type { Quota } from '../../domain/types';
+import {
+  fromMinutes,
+  loadLevel,
+  pizzaSlot,
+  quotaFor,
+  slotLoad,
+  slotOf,
+  slotsForDay,
+  toMinutes,
+} from '../../domain/rules';
 
-/** Bandeau des créneaux de 10 min : charge / quota, réglable au toucher. */
+/** Bandeau des créneaux de 10 min : pizzas prévues / maximum, réglable au toucher. */
 export function PlanningBar() {
   const { day, date, nowMin, store, run } = useKiosk();
   const { settings, dayQuotas, orders } = day;
@@ -14,8 +22,12 @@ export function PlanningBar() {
 
   const slots = useMemo(() => {
     const list = slotsForDay(settings.openingHours);
-    // Créneaux hors horaires mais qui contiennent des commandes.
-    for (const o of orders) if (!list.includes(o.slot)) list.push(o.slot);
+    // Créneaux hors horaires mais qui contiennent des pizzas.
+    for (const o of orders)
+      for (const p of Object.values(o.pizzas)) {
+        const s = pizzaSlot(o, p);
+        if (!list.includes(s)) list.push(s);
+      }
     return list.sort((a, b) => toMinutes(a) - toMinutes(b));
   }, [settings.openingHours, orders]);
 
@@ -27,7 +39,8 @@ export function PlanningBar() {
   }, [day.ready, currentSlot]);
 
   const editQuota = editing ? quotaFor(editing, settings, dayQuotas) : null;
-  const setQuota = (q: Quota | null) => editing && run(store.setSlotQuota(date, editing, q));
+  const editLoad = editing ? slotLoad(orders, editing) : null;
+  const setQuota = (q: number | null) => editing && run(store.setSlotQuota(date, editing, q));
 
   return (
     <section className="planning" aria-label="Planning de production">
@@ -35,47 +48,43 @@ export function PlanningBar() {
         {slots.map((slot) => {
           const quota = quotaFor(slot, settings, dayQuotas);
           const load = slotLoad(orders, slot);
-          const level = loadLevel(load, quota);
+          const level = loadLevel(load.total, quota);
           const past = toMinutes(slot) + 10 <= nowMin;
           const cls = [
             'slot',
             `level-${level}`,
             slot === currentSlot ? 'slot-current' : past ? 'slot-past' : 'slot-future',
-            dayQuotas[slot] ? 'slot-custom' : '',
+            dayQuotas[slot] !== undefined ? 'slot-custom' : '',
           ].join(' ');
           return (
             <button key={slot} className={cls} onClick={() => setEditing(slot)} data-testid={`slot-${slot}`}>
               <span className="slot-time">{slot}</span>
-              <span className="slot-load">
-                G {load.G}/{quota.G}
+              <span className="slot-count">
+                {load.total}/{quota}
               </span>
-              <span className="slot-load">
-                P {load.P}/{quota.P}
-              </span>
+              <span className="slot-sizes">{load.total > 0 ? `${load.G} G · ${load.P} P` : 'libre'}</span>
             </button>
           );
         })}
       </div>
 
-      {editing && editQuota && (
+      {editing && editQuota !== null && editLoad && (
         <div className="modal-backdrop" onClick={() => setEditing(null)}>
           <div className="modal modal-small" role="dialog" onClick={(e) => e.stopPropagation()}>
             <h2>
               Créneau {editing} – {fromMinutes(toMinutes(editing) + 10)}
             </h2>
-            <p className="muted">Nombre maximum de pizzas sur ce créneau (selon l'affluence).</p>
+            <p className="muted">Nombre maximum de pizzas sur ce créneau, toutes tailles confondues.</p>
             <div className="quota-edit">
-              <label>Grandes</label>
-              <Stepper label="grandes" value={editQuota.G} onChange={(G) => setQuota({ ...editQuota, G })} />
-              <label>Petites</label>
-              <Stepper label="petites" value={editQuota.P} onChange={(P) => setQuota({ ...editQuota, P })} />
+              <label>Pizzas maximum</label>
+              <Stepper label="pizzas" value={editQuota} onChange={(n) => setQuota(n)} />
             </div>
             <p className="muted">
-              Réservé : {slotLoad(orders, editing).G} grande(s), {slotLoad(orders, editing).P} petite(s). Quota par
-              défaut : {settings.defaultQuota.G} G / {settings.defaultQuota.P} P.
+              Déjà prévues : {editLoad.total} pizza(s) ({editLoad.G} grande(s), {editLoad.P} petite(s)). Maximum par
+              défaut : {settings.defaultQuota}.
             </p>
             <div className="modal-actions">
-              {dayQuotas[editing] && (
+              {dayQuotas[editing] !== undefined && (
                 <button className="btn btn-ghost btn-lg" onClick={() => setQuota(null)}>
                   Revenir au défaut
                 </button>

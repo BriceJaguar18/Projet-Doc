@@ -12,6 +12,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDocs,
   initializeFirestore,
   onSnapshot,
   persistentLocalCache,
@@ -47,6 +48,8 @@ export function createFirebase(): { store: Store; auth: AuthApi } {
   // Cache local : l'appli continue de fonctionner si internet coupe quelques instants,
   // et renvoie les changements automatiquement au retour de la connexion.
   const db: Firestore = initializeFirestore(app, {
+    // Un champ facultatif absent (ex. prix d'une ancienne commande) ne bloque pas l'enregistrement.
+    ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
   const firebaseAuth = getAuth(app);
@@ -130,6 +133,7 @@ export function createFirebase(): { store: Store; auth: AuthApi } {
       // pour ne pas annuler un « Au four » envoyé par la cuisine pendant la modification.
       const updates: Record<string, unknown> = {
         pickupTime: next.pickupTime,
+        requestedTime: next.requestedTime ?? next.pickupTime,
         slot: next.slot,
         customerName: next.customerName,
         origin: next.origin,
@@ -139,7 +143,7 @@ export function createFirebase(): { store: Store; auth: AuthApi } {
       };
       for (const p of Object.values(next.pizzas)) {
         if (prev.pizzas[p.id]) {
-          for (const f of PIZZA_CONTENT_FIELDS) updates[`pizzas.${p.id}.${f}`] = p[f];
+          for (const f of PIZZA_CONTENT_FIELDS) if (p[f] !== undefined) updates[`pizzas.${p.id}.${f}`] = p[f];
         } else {
           updates[`pizzas.${p.id}`] = p;
         }
@@ -166,6 +170,11 @@ export function createFirebase(): { store: Store; auth: AuthApi } {
     },
 
     saveSettings: (settings) => setDoc(doc(db, 'config', 'settings'), settings),
+
+    async fetchDay(date) {
+      const snap = await getDocs(query(collection(db, 'orders'), where('serviceDate', '==', date)));
+      return snap.docs.map((d) => d.data() as Order);
+    },
   };
 
   /* -------------------------- Authentification -------------------------- */

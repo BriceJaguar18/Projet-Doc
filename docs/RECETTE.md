@@ -8,7 +8,7 @@ Il y a deux niveaux de test :
 | | Niveau A — Démo | Niveau B — Test réel |
 |---|---|---|
 | Ce qu'il faut | Un ordinateur (ou une tablette) | Firebase + Netlify configurés (voir [GUIDE-INSTALLATION](GUIDE-INSTALLATION.md)) et **2 appareils** |
-| Durée | 20 min | 30 min |
+| Durée | 30 min | 30 min |
 | Ce que ça vérifie | Toutes les fonctions et l'ergonomie | La vraie synchronisation entre deux tablettes, les mots de passe, les coupures internet |
 
 > En démo, les deux écrans ne se synchronisent qu'entre deux onglets **du même appareil**. Pour tester avec deux
@@ -51,11 +51,33 @@ Il y a deux niveaux de test :
       **bleue**, la nouvelle est neutre.
 - [ ] 🗑 supprime la commande (après confirmation), sur les deux écrans.
 
-### Planning et quotas
-- [ ] Le bandeau du haut affiche `G x/3 · P x/2` qui augmente quand on ajoute des pizzas.
-- [ ] Mettre 4 grandes sur un même créneau → message rouge « complet » et bouton « Forcer et enregistrer ».
-- [ ] Toucher un créneau dans le bandeau, passer à 4 grandes → le maximum change aussi côté Cuisine.
-- [ ] « Revenir au défaut » remet 3/2.
+### Planning, capacité et report sur le créneau suivant
+- [ ] Le bandeau du haut affiche `x/5` (toutes tailles) qui augmente quand on ajoute des pizzas, grandes ou petites.
+- [ ] Mettre 4 pizzas sur un créneau, puis une commande de 3 pizzas sur le même créneau → message orange :
+      1 pizza reste, 2 passent sur le créneau suivant, avec la nouvelle heure de retrait.
+- [ ] « Enregistrer (retrait …) » → la carte affiche la nouvelle heure en gros et « demandé … » à côté ; les pizzas
+      reportées ont un badge orange « créneau … ».
+- [ ] Côté Cuisine, cette commande apparaît dans les deux colonnes, chacune avec ses pizzas.
+- [ ] Sur un créneau complet, « Forcer tout sur … » garde toutes les pizzas sur ce créneau (case rouge dans le
+      bandeau).
+- [ ] Toucher un créneau dans le bandeau, passer le maximum à 7 → le maximum change aussi côté Cuisine.
+- [ ] « Revenir au défaut » remet le maximum par défaut.
+
+### Prix et total
+- [ ] Dans le formulaire, chaque pizza affiche son prix (suppléments compris) et le total se met à jour en bas.
+- [ ] Une « Autre pizza » demande un prix ; il est bien compté dans le total.
+- [ ] Le total apparaît en bas à droite de chaque carte commande.
+- [ ] Changer le prix d'une pizza dans les Réglages → les nouvelles commandes ont le nouveau prix, les anciennes
+      gardent l'ancien.
+
+### Ventes (📊)
+- [ ] Le total des ventes correspond à la somme des totaux des commandes du jour.
+- [ ] Les articles vendus sont listés avec quantité, prix unitaire et total (pizzas par taille, suppléments,
+      boissons, kiosquitos, desserts).
+- [ ] Les boutons Midi / Soir ne gardent que les commandes de ce service.
+- [ ] « Télécharger le récapitulatif » → le fichier arrive dans Téléchargements et s'ouvre correctement dans
+      Excel ou Google Sheets (accents, montants).
+- [ ] Choisir le jour d'hier → les ventes d'hier s'affichent (niveau B uniquement).
 
 ### Alertes de retard
 - [ ] Créer une commande pour **dans 5 minutes** sans la lancer → badge orange « À lancer » sur les deux écrans.
@@ -66,8 +88,8 @@ Il y a deux niveaux de test :
 ### Réglages (⚙ côté Service)
 - [ ] Ajouter une pizza à la carte avec ses ingrédients → elle apparaît dans le formulaire, et ses ingrédients
       dans « Retirer ».
-- [ ] Ajouter un supplément, une boisson, une origine (ex. « Deliveroo »).
-- [ ] Changer le quota par défaut, les horaires, le délai de pré-alerte, Coupée/Olives par défaut.
+- [ ] Ajouter un supplément, une boisson (avec leur prix), une origine (ex. « Deliveroo »).
+- [ ] Changer le maximum par créneau, les horaires, le délai de pré-alerte, Coupée/Olives par défaut.
 - [ ] « ← Retour » sans enregistrer → une confirmation est demandée.
 
 ### Lisibilité
@@ -103,7 +125,9 @@ Prenez **deux appareils différents** : idéalement les deux vraies tablettes, s
 ### Sur place, avant de livrer
 - [ ] Remplacer la carte d'exemple par **la vraie carte** du kiosque, ainsi que les suppléments, boissons,
       Kiosquitos et desserts.
-- [ ] Régler les **vrais horaires** d'ouverture et le **quota** par défaut avec le gérant.
+- [ ] Saisir **les vrais prix** de chaque article.
+- [ ] Régler les **vrais horaires** d'ouverture et le **maximum de pizzas par créneau** avec le gérant.
+- [ ] Faire un export des ventes depuis la vraie tablette et vérifier où se trouve le fichier.
 - [ ] Vérifier la **date et l'heure automatiques** sur les deux tablettes.
 - [ ] Supprimer les commandes de test (🗑) pour que le client démarre avec une liste vide.
 - [ ] Remettre au client les deux mots de passe et le [mode d'emploi](GUIDE-UTILISATION.md).

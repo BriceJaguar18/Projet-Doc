@@ -1,6 +1,7 @@
-import { PizzaDetails, PizzaOptions, Segmented } from '../../components/ui';
+import { PizzaDetails, PizzaOptions, PriceInput, Segmented } from '../../components/ui';
+import { formatPrice } from '../../domain/pricing';
 import { SIZE_LABEL } from '../../domain/rules';
-import type { Base, MenuPizza, Pizza, Size } from '../../domain/types';
+import type { Base, MenuPizza, Pizza, PricedItem, Size } from '../../domain/types';
 
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -10,7 +11,11 @@ export function PizzaEditor(props: {
   index: number;
   pizza: Pizza;
   menu: MenuPizza | undefined;
-  supplements: string[];
+  supplements: PricedItem[];
+  /** Prix de la pizza seule pour la taille choisie (centimes). */
+  price: number;
+  /** Créneau de report si la pizza bascule sur un créneau suivant. */
+  slotLabel: string | null;
   expanded: boolean;
   statusLabel: string | null;
   custom: boolean;
@@ -21,6 +26,8 @@ export function PizzaEditor(props: {
 }) {
   const { pizza: p, onChange } = props;
   const ingredients = props.menu?.ingredients ?? [];
+  const suppPrice = (name: string) => props.supplements.find((s) => s.name === name)?.price ?? p.suppPrices?.[name] ?? 0;
+  const total = props.price + p.supplements.reduce((sum, s) => sum + suppPrice(s), 0);
 
   return (
     <li className={`pizza-editor ${props.expanded ? 'expanded' : ''}`} data-testid="pizza-editor">
@@ -36,6 +43,8 @@ export function PizzaEditor(props: {
             </>
           )}
           {props.statusLabel && <span className="badge">{props.statusLabel}</span>}
+          {props.slotLabel && <span className="badge badge-shift">→ créneau {props.slotLabel}</span>}
+          <span className="pizza-price">{formatPrice(total)}</span>
           <span className="chevron">{props.expanded ? '▲' : '▼'}</span>
         </button>
         <button type="button" className="btn btn-ghost" onClick={props.onDuplicate} title="Dupliquer">
@@ -98,12 +107,12 @@ export function PizzaEditor(props: {
             <div className="chips">
               {props.supplements.map((s) => (
                 <button
-                  key={s}
+                  key={s.name}
                   type="button"
-                  className={`chip chip-add ${p.supplements.includes(s) ? 'on' : ''}`}
-                  onClick={() => onChange({ supplements: toggle(p.supplements, s) })}
+                  className={`chip chip-add ${p.supplements.includes(s.name) ? 'on' : ''}`}
+                  onClick={() => onChange({ supplements: toggle(p.supplements, s.name) })}
                 >
-                  + {s}
+                  + {s.name} <small>{formatPrice(s.price)}</small>
                 </button>
               ))}
             </div>
@@ -124,6 +133,18 @@ export function PizzaEditor(props: {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {props.custom && (
+            <div className="editor-row">
+              <span className="editor-label">Prix</span>
+              <PriceInput
+                label={`Prix de ${p.name}`}
+                value={p.basePrice ?? 0}
+                onChange={(basePrice) => onChange({ basePrice })}
+              />
+              <span className="muted">Pizza hors carte : indiquez son prix (sans les suppléments).</span>
             </div>
           )}
 

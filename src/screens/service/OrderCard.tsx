@@ -1,6 +1,7 @@
 import { useKiosk } from '../../KioskContext';
 import { AlertBadge, OriginBadge, PizzaDetails, PizzaOptions } from '../../components/ui';
-import { STATUS_LABEL, orderAlert, sortedPizzas } from '../../domain/rules';
+import { formatPrice, orderTotal, pizzaTotal } from '../../domain/pricing';
+import { STATUS_LABEL, orderAlert, pizzaSlot, requestedTimeOf, slotOf, sortedPizzas } from '../../domain/rules';
 import type { Order, OtherCategory } from '../../domain/types';
 
 const CATEGORY_ICON: Record<OtherCategory, string> = { boisson: '🥤', kiosquito: '🥟', dessert: '🍨' };
@@ -10,6 +11,8 @@ export function OrderCard({ order, onEdit }: { order: Order; onEdit: (o: Order) 
   const pizzas = sortedPizzas(order);
   const alert = orderAlert(order, nowMin, day.settings.preAlertMinutes);
   const inOven = pizzas.filter((p) => p.status === 'four');
+  const requested = requestedTimeOf(order);
+  const requestedSlot = slotOf(requested);
 
   const cls = [
     'order-card',
@@ -39,6 +42,7 @@ export function OrderCard({ order, onEdit }: { order: Order; onEdit: (o: Order) 
     <article className={cls} data-testid={`order-${order.customerName}`}>
       <header className="order-head">
         <span className="pickup">{order.pickupTime}</span>
+        {requested !== order.pickupTime && <span className="requested">demandé {requested}</span>}
         <span className="customer">{order.customerName}</span>
         <OriginBadge origin={order.origin} />
         {order.collected && <span className="badge badge-collected">Récupérée</span>}
@@ -61,6 +65,10 @@ export function OrderCard({ order, onEdit }: { order: Order; onEdit: (o: Order) 
                 <span className="pizza-title">
                   <span className={`size size-${p.size}`}>{p.size}</span>
                   <span className="pizza-name">{p.name}</span>
+                  <span className="pizza-price">{formatPrice(pizzaTotal(p))}</span>
+                  {pizzaSlot(order, p) !== requestedSlot && (
+                    <span className="badge badge-shift">créneau {pizzaSlot(order, p)}</span>
+                  )}
                 </span>
                 <PizzaDetails pizza={p} />
                 <PizzaOptions pizza={p} />
@@ -133,6 +141,9 @@ export function OrderCard({ order, onEdit }: { order: Order; onEdit: (o: Order) 
         >
           {order.collected ? 'Récupérée ✓' : 'Récupérée ?'}
         </button>
+        <span className="order-total" data-testid="order-total">
+          {formatPrice(orderTotal(order))}
+        </span>
       </footer>
     </article>
   );

@@ -26,12 +26,18 @@ test('captures de la documentation', async ({ context }) => {
   await service.bringToFront();
   await service.getByTestId('new-order').click();
   await service.getByTestId('input-name').fill('Garcia');
-  await service.getByTestId('pick-19:30').click();
-  await service.locator('.menu-btn', { hasText: 'Reine' }).click();
+  await service.getByTestId('pick-19:20').click();
+  for (const name of ['Margherita', 'Orientale', 'Reine']) await service.locator('.menu-btn', { hasText: name }).click();
   const ed = service.getByTestId('pizza-editor').last();
   await ed.getByRole('button', { name: '+ Chèvre' }).click();
   await ed.getByRole('button', { name: '− Champignons' }).click();
   await ed.getByRole('group', { name: 'Olives' }).getByRole('button', { name: 'Non' }).click();
-  await service.locator('.modal-body').evaluate((el) => (el.scrollTop = 330));
+  await expect(service.getByTestId('shift-warning')).toBeVisible();
+  await service.locator('.modal-body').evaluate((el) => (el.scrollTop = 420));
   await service.screenshot({ path: 'docs/captures/formulaire.png' });
+  await service.getByRole('button', { name: 'Annuler' }).click();
+
+  await service.getByTestId('open-sales').click();
+  await expect(service.getByTestId('sales-table')).toBeVisible();
+  await service.screenshot({ path: 'docs/captures/ventes.png' });
 });

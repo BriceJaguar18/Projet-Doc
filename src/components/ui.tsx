@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useKiosk } from '../KioskContext';
+import { formatAmount, parsePrice } from '../domain/pricing';
 import { BASE_LABEL, type OrderAlert } from '../domain/rules';
 import type { Pizza } from '../domain/types';
 
@@ -109,7 +110,7 @@ export function AlertBadge({ alert }: { alert: OrderAlert }) {
     );
   return (
     <span className="badge badge-bientot" data-testid="badge-bientot">
-      À lancer · retrait dans {alert.minutes} min
+      À lancer · {alert.minutes === 0 ? 'maintenant' : `dans ${alert.minutes} min`}
     </span>
   );
 }
@@ -145,6 +146,45 @@ export function PizzaOptions({ pizza, big }: { pizza: Pizza; big?: boolean }) {
     <span className={`pizza-options ${big ? 'big' : ''}`}>
       <span className={`opt ${pizza.cut ? 'opt-yes' : 'opt-no'}`}>{pizza.cut ? 'COUPÉE' : 'NON COUPÉE'}</span>
       <span className={`opt ${pizza.olives ? 'opt-yes' : 'opt-no'}`}>{pizza.olives ? 'OLIVES' : 'SANS OLIVES'}</span>
+    </span>
+  );
+}
+
+/**
+ * Saisie d'un prix en euros (« 10,50 »), valeur stockée en centimes.
+ * Accepte la virgule ou le point ; le champ devient rouge si le texte n'est pas un prix.
+ */
+export function PriceInput(props: { value: number; onChange: (cents: number) => void; label: string; id?: string }) {
+  const [text, setText] = useState(() => formatAmount(props.value));
+  const [focused, setFocused] = useState(false);
+  const valid = parsePrice(text) !== null;
+  // Suit la valeur enregistrée tant qu'on n'est pas en train de taper.
+  useEffect(() => {
+    if (!focused) setText(formatAmount(props.value));
+  }, [props.value, focused]);
+  return (
+    <span className={`price-input ${valid ? '' : 'invalid'}`}>
+      <input
+        id={props.id}
+        inputMode="decimal"
+        aria-label={props.label}
+        value={text}
+        onFocus={(e) => {
+          setFocused(true);
+          e.target.select();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          const v = parsePrice(text);
+          setText(formatAmount(v ?? props.value));
+        }}
+        onChange={(e) => {
+          setText(e.target.value);
+          const v = parsePrice(e.target.value);
+          if (v !== null) props.onChange(v);
+        }}
+      />
+      <span aria-hidden>€</span>
     </span>
   );
 }

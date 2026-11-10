@@ -8,6 +8,7 @@ import {
   kitchenBack,
   kitchenNext,
   orderAlert,
+  pizzaSlot,
   quotaFor,
   slotLoad,
   sortedPizzas,
@@ -42,10 +43,22 @@ export function KitchenScreen() {
     [day.orders],
   );
 
+  // Une colonne par créneau de production. Une commande dont des pizzas ont basculé sur le
+  // créneau suivant apparaît dans les deux colonnes, chacune avec ses pizzas.
   const groups = useMemo(() => {
-    const map = new Map<string, Order[]>();
-    for (const o of todo) map.set(o.slot, [...(map.get(o.slot) ?? []), o]);
-    return [...map.entries()];
+    const map = new Map<string, Array<{ order: Order; pizzas: Pizza[] }>>();
+    for (const o of todo) {
+      const bySlot = new Map<string, Pizza[]>();
+      for (const p of sortedPizzas(o)) {
+        const s = pizzaSlot(o, p);
+        bySlot.set(s, [...(bySlot.get(s) ?? []), p]);
+      }
+      for (const [slot, pizzas] of bySlot) {
+        if (pizzas.every((p) => p.status === 'prete')) continue;
+        map.set(slot, [...(map.get(slot) ?? []), { order: o, pizzas }]);
+      }
+    }
+    return [...map.entries()].sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
   }, [todo]);
 
   const ids = useMemo(() => day.orders.map((o) => o.id), [day.orders]);
@@ -86,7 +99,7 @@ export function KitchenScreen() {
       <main className="kitchen">
         {!day.ready && <p className="empty">Chargement…</p>}
         {day.ready && todo.length === 0 && <p className="empty big">Rien à préparer pour le moment 👌</p>}
-        {groups.map(([slot, orders]) => {
+        {groups.map(([slot, entries]) => {
           const load = slotLoad(day.orders, slot);
           const quota = quotaFor(slot, day.settings, day.dayQuotas);
           return (
@@ -96,12 +109,12 @@ export function KitchenScreen() {
                   {slot} – {fromMinutes(toMinutes(slot) + 10)}
                 </span>
                 <small>
-                  Grandes {load.G}/{quota.G} · Petites {load.P}/{quota.P}
+                  {load.total}/{quota} pizzas · {load.G} G · {load.P} P
                 </small>
               </h2>
               <div className="ticket-stack">
-                {orders.map((o) => (
-                  <Ticket key={o.id} order={o} fresh={fresh.has(o.id)} />
+                {entries.map(({ order, pizzas }) => (
+                  <Ticket key={order.id} order={order} pizzas={pizzas} slot={slot} fresh={fresh.has(order.id)} />
                 ))}
               </div>
             </section>
@@ -112,10 +125,14 @@ export function KitchenScreen() {
   );
 }
 
-function Ticket({ order, fresh }: { order: Order; fresh: boolean }) {
+function Ticket(props: { order: Order; pizzas: Pizza[]; slot: string; fresh: boolean }) {
+  const { order, pizzas, slot, fresh } = props;
   const { store, run, nowMin, day } = useKiosk();
-  const pizzas = sortedPizzas(order);
-  const alert = orderAlert(order, nowMin, day.settings.preAlertMinutes);
+  const alert = orderAlert(order, nowMin, day.settings.preAlertMinutes, pizzas);
+  // Autres créneaux de la même commande (pizzas reportées ou déjà faites avant).
+  const elsewhere = [...new Set(sortedPizzas(order).map((p) => pizzaSlot(order, p)))]
+    .filter((s) => s !== slot)
+    .map((s) => ({ slot: s, count: sortedPizzas(order).filter((p) => pizzaSlot(order, p) === s).length }));
   const waiting = pizzas.filter((p) => p.status === 'attente');
   const preparing = pizzas.filter((p) => p.status === 'preparation');
   const setAll = (list: Pizza[], status: PizzaStatus) =>
@@ -131,6 +148,7 @@ function Ticket({ order, fresh }: { order: Order; fresh: boolean }) {
     <article
       className={`ticket ${alert ? `alert-${alert.kind}` : ''} ${fresh ? 'fresh' : ''}`}
       data-testid={`ticket-${order.customerName}`}
+      data-slot={slot}
     >
       <header className="ticket-head">
         <span className="pickup">{order.pickupTime}</span>
@@ -139,6 +157,11 @@ function Ticket({ order, fresh }: { order: Order; fresh: boolean }) {
         {fresh && <span className="badge badge-new">NOUVELLE</span>}
         <AlertBadge alert={alert} />
       </header>
+      {elsewhere.length > 0 && (
+        <p className="ticket-split">
+          Même commande : {elsewhere.map((e) => `${e.count} pizza(s) sur ${e.slot}`).join(', ')}
+        </p>
+      )}
 
       <ul className="ticket-pizzas">
         {pizzas.map((p) => {

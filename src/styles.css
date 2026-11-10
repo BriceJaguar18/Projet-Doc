@@ -516,7 +516,14 @@ h4 {
   font-weight: 800;
   font-size: 16px;
 }
-.slot-load {
+.slot-count {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.slot-sizes {
+  font-size: 12px;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .slot.level-libre {
@@ -825,6 +832,10 @@ h4 {
 .slot-pick.fits {
   background: #f0fdf4;
 }
+.slot-pick.partial {
+  background: #fff7e0;
+  border-color: #f5d48a;
+}
 .slot-pick.full {
   background: #fef2f2;
   border-color: #fecaca;
@@ -1023,9 +1034,12 @@ h4 {
   display: grid;
   gap: 4px;
 }
-.capacity-warning {
-  color: #b91c1c;
-  font-weight: 700;
+.shift-warning {
+  color: #9a3412;
+  font-weight: 600;
+}
+.shift-warning strong {
+  color: #7c2d12;
 }
 .capacity-ok {
   color: #166534;
@@ -1035,6 +1049,80 @@ h4 {
   color: #b91c1c;
   font-weight: 600;
   margin: 0;
+}
+
+/* -------------------------------- Prix -------------------------------- */
+
+.price,
+.chip small {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.pizza-price {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pizza-editor-summary .pizza-price {
+  margin-left: auto;
+}
+.pizza-editor-summary .pizza-price + .chevron {
+  margin-left: 6px;
+}
+.order-total {
+  margin-left: auto;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.order-total-lg {
+  font-size: 22px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.requested {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.badge-shift {
+  background: #ffedd5;
+  color: #9a3412;
+}
+.price-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.price-input input {
+  width: 92px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.price-input.invalid input {
+  border-color: var(--retard);
+  background: #fef2f2;
+}
+.priced-list {
+  display: grid;
+  gap: 6px;
+}
+.priced-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.priced-row > input {
+  flex: 1;
+  min-width: 0;
+}
+.priced-add {
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
 }
 
 /* ---------------------------- Écran Cuisine ---------------------------- */
@@ -1127,6 +1215,14 @@ h4 {
   font-weight: 800;
   font-size: 20px;
 }
+.ticket-split {
+  margin: 0;
+  padding: 6px 12px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-weight: 700;
+  font-size: 16px;
+}
 .ticket-foot {
   display: flex;
   flex-wrap: wrap;
@@ -1205,6 +1301,117 @@ h4 {
   min-width: 260px;
 }
 
+/* -------------------------------- Ventes -------------------------------- */
+
+.sales {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 60px;
+}
+.sales-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+.sales-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.sales-summary {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: 12px;
+}
+.kpi {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.kpi-main {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.kpi-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+.kpi-value {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-main .kpi-value {
+  font-size: 40px;
+}
+.kpi-sub {
+  font-size: 14px;
+  opacity: 0.8;
+}
+.sales-warning {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fff7e0;
+  color: #854d0e;
+  font-weight: 600;
+}
+.sales-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.sales-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.sales-table th,
+.sales-table td {
+  padding: 7px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.sales-table thead th {
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sales-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.sales-table .cat-row th {
+  padding-top: 14px;
+  font-size: 15px;
+  border-bottom: 2px solid var(--primary);
+}
+.sales-table .subtotal td {
+  font-weight: 700;
+  background: #f6f7f9;
+}
+.sales-table tfoot td {
+  font-size: 19px;
+  font-weight: 800;
+  border-bottom: 0;
+  border-top: 3px solid var(--primary);
+}
+
 /* -------------------------------- Login -------------------------------- */
 
 .login {
@@ -1275,6 +1482,18 @@ h4 {
 }
 
 /* --------------------------- Petits écrans --------------------------- */
+
+@media (max-width: 900px) {
+  .sales-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .kpi-main {
+    grid-column: 1 / -1;
+  }
+  .sales-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 @media (max-width: 700px) {
   .order-grid,

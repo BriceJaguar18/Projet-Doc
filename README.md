@@ -2,8 +2,10 @@
 
 Application pour **2 tablettes synchronisées en temps réel** :
 
-- **Écran Service** (comptoir) : prise de commande, planning par créneaux de 10 min avec quotas, suivi coloré,
-  validation « Prête », paiement, retrait, alertes de retard.
+- **Écran Service** (comptoir) : prise de commande avec prix et total, planning par créneaux de 10 min (nombre
+  maximum de pizzas, report automatique sur le créneau suivant, bouton « Forcer »), suivi coloré, validation
+  « Prête », paiement, retrait, alertes de retard.
+- **Ventes** : récapitulatif par service (midi, soir, journée) et export d'un fichier tableur.
 - **Écran Cuisine** (pizzaiolo) : « Lancer préparation » et « Au four », avec retour arrière.
 
 | Écran Service | Écran Cuisine |
@@ -27,9 +29,9 @@ Application pour **2 tablettes synchronisées en temps réel** :
   synchronisées entre les onglets d'un même appareil. Pratique pour montrer l'application.
 
 ```
-src/domain/       règles métier (statuts autorisés par rôle, créneaux, quotas, retards) + réglages par défaut
+src/domain/       règles métier (statuts par rôle, créneaux, report, retards), prix, ventes + réglages par défaut
 src/data/         accès aux données : firebaseStore (production) et demoStore (démo), même interface
-src/screens/      écrans Service, Cuisine, Réglages, Connexion
+src/screens/      écrans Service, Cuisine, Ventes, Réglages, Connexion
 tests/            tests unitaires (vitest)
 e2e/              tests de bout en bout en mode démo (Playwright, 2 onglets)
 e2e-firebase/     tests contre l'émulateur Firebase (synchro réelle, règles de sécurité, coupure internet)

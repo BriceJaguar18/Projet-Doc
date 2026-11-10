@@ -96,6 +96,7 @@ export function createDemoStore(): Store {
         else delete day[slot];
       }),
     saveSettings: (settings) => mutate((db) => void (db.settings = settings)),
+    fetchDay: async (date) => Object.values(load().orders).filter((o) => o.serviceDate === date),
   };
 }
 

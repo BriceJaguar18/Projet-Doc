@@ -30,6 +30,9 @@ export function ServiceScreen() {
     <div className="screen screen-service">
       <TopBar title="Service">
         {lates > 0 && <span className="badge badge-retard big">{lates} en retard</span>}
+        <button className="btn btn-ghost btn-lg" onClick={() => navigate('ventes')} data-testid="open-sales">
+          📊 Ventes
+        </button>
         <button className="btn btn-ghost btn-lg" onClick={() => navigate('reglages')} aria-label="Réglages">
           ⚙ Réglages
         </button>

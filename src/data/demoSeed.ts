@@ -1,4 +1,5 @@
 import { withDefaults } from '../domain/defaultSettings';
+import { priceItem, pricePizza } from '../domain/pricing';
 import { fromMinutes, localISODate, newId, nowMinutes, slotOf } from '../domain/rules';
 import type { Order, Pizza, PizzaStatus, Size } from '../domain/types';
 import type { Store } from './store';
@@ -38,10 +39,13 @@ export async function seedDemo(store: Store) {
       paid: false,
       collected: false,
       note: '',
-      pizzas: Object.fromEntries(pizzas.map((p, i) => [p.id, { ...p, position: i }])),
-      items: [],
+      requestedTime: pickupTime,
+      pizzas: Object.fromEntries(
+        pizzas.map((p, i) => [p.id, pricePizza({ ...p, position: i, slot: slotOf(pickupTime) }, settings)]),
+      ),
       createdAt: Date.now() + offset,
       ...extra,
+      items: (extra.items ?? []).map((it) => priceItem(it, settings)),
     };
   };
 

@@ -160,7 +160,8 @@ Dans Firebase : **Authentication → Paramètres → Domaines autorisés → Ajo
 La tablette reste connectée ensuite (même après redémarrage).
 
 **Option « borne » (Android) :** l'application *Fully Kiosk Browser* verrouille la tablette sur l'application
-(adresse de départ = celle de Netlify, « Keep screen on », « Launch on boot »). Sur iPad : *Accès guidé*
+(adresse de départ = celle de Netlify, « Keep screen on », « Launch on boot », et autoriser les téléchargements
+pour l'export des ventes). Sur iPad : *Accès guidé*
 (Réglages → Accessibilité).
 
 ---
@@ -171,7 +172,7 @@ La tablette reste connectée ensuite (même après redémarrage).
 Rien avec les offres gratuites. Pour un kiosque (≈ 150 commandes/jour), l'usage reste très en dessous des limites
 gratuites de Firebase (50 000 lectures et 20 000 écritures par jour) et de Netlify.
 
-**Comment changer la carte, les quotas, les horaires ?**
+**Comment changer la carte, les prix, le maximum de pizzas par créneau, les horaires ?**
 Directement sur la tablette Service : bouton **⚙ Réglages**. Aucun code à toucher.
 
 **Comment changer un mot de passe de tablette ?**

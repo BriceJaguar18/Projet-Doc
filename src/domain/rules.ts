@@ -1,14 +1,5 @@
-import type {
-  DayQuotas,
-  OpeningRange,
-  Order,
-  Pizza,
-  PizzaStatus,
-  Quota,
-  Role,
-  Settings,
-  Size,
-} from './types';
+import { quotaNumber } from './defaultSettings';
+import type { DayQuotas, OpeningRange, Order, Pizza, PizzaStatus, Role, Settings, Size } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Statuts                                                             */
@@ -116,66 +107,154 @@ export function nowMinutes(d: Date): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* Créneau de chaque pizza                                             */
+/* ------------------------------------------------------------------ */
+
+/** Heure demandée par le client (les anciennes commandes n'ont que l'heure de retrait). */
+export function requestedTimeOf(order: Order): string {
+  return order.requestedTime ?? order.pickupTime;
+}
+
+/** Créneau de production d'une pizza (celui de la commande pour les anciennes commandes). */
+export function pizzaSlot(order: Order, p: Pizza): string {
+  return p.slot ?? order.slot;
+}
+
+/**
+ * Heure à laquelle une pizza doit être prête : l'heure demandée, décalée de 10 min
+ * par créneau de report (19:15 demandé, pizza reportée sur le créneau suivant → 19:25).
+ */
+export function pizzaDue(order: Order, p: Pizza): number {
+  const requested = requestedTimeOf(order);
+  const shift = toMinutes(pizzaSlot(order, p)) - toMinutes(slotOf(requested));
+  return toMinutes(requested) + Math.max(0, shift);
+}
+
+/* ------------------------------------------------------------------ */
 /* Charge et quotas                                                    */
 /* ------------------------------------------------------------------ */
 
-export function quotaFor(slot: string, settings: Settings, dayQuotas: DayQuotas): Quota {
-  return dayQuotas[slot] ?? settings.defaultQuota;
+/** Nombre maximum de pizzas (toutes tailles) sur un créneau. */
+export function quotaFor(slot: string, settings: Settings, dayQuotas: DayQuotas): number {
+  return dayQuotas[slot] === undefined ? settings.defaultQuota : quotaNumber(dayQuotas[slot], settings.defaultQuota);
 }
 
-export function countBySize(pizzas: Iterable<Pick<Pizza, 'size'>>): Quota {
-  const q: Quota = { G: 0, P: 0 };
+export interface SizeCount {
+  G: number;
+  P: number;
+}
+
+export function countBySize(pizzas: Iterable<Pick<Pizza, 'size'>>): SizeCount {
+  const q: SizeCount = { G: 0, P: 0 };
   for (const p of pizzas) q[p.size] += 1;
   return q;
 }
 
-/** Nombre de grandes / petites pizzas déjà réservées sur un créneau. */
-export function slotLoad(orders: Order[], slot: string, excludeOrderId?: string): Quota {
-  const load: Quota = { G: 0, P: 0 };
+export interface SlotLoad extends SizeCount {
+  /** Nombre total de pizzas, toutes tailles confondues. */
+  total: number;
+}
+
+/** Pizzas déjà prévues sur un créneau (total, et détail grandes / petites pour information). */
+export function slotLoad(orders: Order[], slot: string, excludeOrderId?: string): SlotLoad {
+  const load: SlotLoad = { total: 0, G: 0, P: 0 };
   for (const o of orders) {
-    if (o.slot !== slot || o.id === excludeOrderId) continue;
-    const c = countBySize(Object.values(o.pizzas));
-    load.G += c.G;
-    load.P += c.P;
+    if (o.id === excludeOrderId) continue;
+    for (const p of Object.values(o.pizzas)) {
+      if (pizzaSlot(o, p) !== slot) continue;
+      load.total += 1;
+      load[p.size] += 1;
+    }
   }
   return load;
 }
 
-export interface CapacityCheck {
-  load: Quota;
-  quota: Quota;
-  /** Places restantes (peut être négatif en cas de dépassement forcé). */
-  remaining: Quota;
+export type LoadLevel = 'libre' | 'presque' | 'plein' | 'depasse';
+
+export function loadLevel(load: number, quota: number): LoadLevel {
+  if (load > quota) return 'depasse';
+  if (load >= quota) return 'plein';
+  if (quota > 0 && load / quota >= 0.6) return 'presque';
+  return 'libre';
+}
+
+export interface PizzaPlan {
+  /** Créneau de production attribué à chaque pizza (par id). */
+  slots: Record<string, string>;
+  requestedSlot: string;
+  /** Heure de retrait à annoncer au client (décalée si des pizzas sont reportées). */
+  pickupTime: string;
+  /** Des pizzas ont été reportées sur un créneau suivant. */
+  shifted: boolean;
+  /** Le créneau demandé dépasse son quota (pizzas forcées). */
   over: boolean;
+  /** Places libres sur le créneau demandé, avant cette commande. */
+  freeInRequested: number;
+  /** Nombre de pizzas de la commande par créneau, dans l'ordre. */
+  perSlot: Array<{ slot: string; count: number }>;
 }
 
 /**
- * Vérifie si l'ajout de pizzas sur un créneau dépasse le quota.
- * `excludeOrderId` : en modification, on ne compte pas l'ancienne version de la commande.
+ * Répartit les pizzas d'une commande sur les créneaux.
+ * Les pizzas remplissent les places libres du créneau demandé ; celles qui ne rentrent pas
+ * basculent sur le créneau suivant (puis le suivant, etc.).
+ * - `force` : toutes les pizzas sur le créneau demandé, même au-delà du quota.
+ * - `pinned` : pizzas qui gardent leur créneau (déjà lancées en cuisine, en modification).
+ * - `excludeOrderId` : en modification, l'ancienne version de la commande n'est pas comptée.
  */
-export function checkCapacity(
-  orders: Order[],
-  slot: string,
-  quota: Quota,
-  extra: Quota = { G: 0, P: 0 },
-  excludeOrderId?: string,
-): CapacityCheck {
-  const base = slotLoad(orders, slot, excludeOrderId);
-  const load = { G: base.G + extra.G, P: base.P + extra.P };
-  const remaining = { G: quota.G - load.G, P: quota.P - load.P };
-  return { load, quota, remaining, over: remaining.G < 0 || remaining.P < 0 };
-}
+export function planPizzas(args: {
+  orders: Order[];
+  settings: Settings;
+  dayQuotas: DayQuotas;
+  requestedTime: string;
+  pizzas: Array<Pick<Pizza, 'id'>>;
+  pinned?: Record<string, string>;
+  excludeOrderId?: string;
+  force?: boolean;
+}): PizzaPlan {
+  const { settings, dayQuotas, requestedTime, pizzas, pinned = {}, force = false } = args;
+  const requestedSlot = slotOf(requestedTime);
+  const others = args.orders.filter((o) => o.id !== args.excludeOrderId);
+  const added = new Map<string, number>();
+  const free = (slot: string) =>
+    quotaFor(slot, settings, dayQuotas) - slotLoad(others, slot).total - (added.get(slot) ?? 0);
+  const take = (slot: string) => added.set(slot, (added.get(slot) ?? 0) + 1);
 
-export type LoadLevel = 'libre' | 'presque' | 'plein' | 'depasse';
+  const freeInRequested = free(requestedSlot);
+  const slots: Record<string, string> = {};
+  for (const p of pizzas) {
+    if (pinned[p.id]) {
+      slots[p.id] = pinned[p.id];
+      take(pinned[p.id]);
+    }
+  }
 
-export function loadLevel(load: Quota, quota: Quota): LoadLevel {
-  const sizes: Size[] = ['G', 'P'];
-  if (sizes.some((s) => load[s] > quota[s])) return 'depasse';
-  const total = load.G + load.P;
-  const max = quota.G + quota.P;
-  if (sizes.every((s) => load[s] >= quota[s])) return 'plein';
-  if (max > 0 && total / max >= 0.6) return 'presque';
-  return 'libre';
+  let cursor = toMinutes(requestedSlot);
+  let shifted = false;
+  for (const p of pizzas) {
+    if (slots[p.id]) continue;
+    let slot = requestedSlot;
+    if (!force) {
+      while (free(fromMinutes(cursor)) <= 0 && cursor + SLOT_MINUTES < 24 * 60) cursor += SLOT_MINUTES;
+      // Aucun créneau libre avant minuit : on reste sur le créneau demandé.
+      if (free(fromMinutes(cursor)) > 0) slot = fromMinutes(cursor);
+    }
+    if (slot !== requestedSlot) shifted = true;
+    slots[p.id] = slot;
+    take(slot);
+  }
+
+  const used = [...new Set(pizzas.map((p) => slots[p.id]))].sort((a, b) => toMinutes(a) - toMinutes(b));
+  const maxShift = Math.max(0, ...used.map((s) => toMinutes(s) - toMinutes(requestedSlot)));
+  return {
+    slots,
+    requestedSlot,
+    pickupTime: fromMinutes(toMinutes(requestedTime) + maxShift),
+    shifted,
+    over: free(requestedSlot) < 0,
+    freeInRequested,
+    perSlot: used.map((slot) => ({ slot, count: pizzas.filter((p) => slots[p.id] === slot).length })),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -188,20 +267,26 @@ export type OrderAlert =
   | null;
 
 /**
- * - « retard » : l'heure de retrait est dépassée et toutes les pizzas ne sont pas prêtes.
- * - « bientot » : retrait dans moins de `preAlertMinutes` et au moins une pizza pas encore lancée.
+ * - « retard » : l'heure de retrait annoncée est dépassée et toutes les pizzas ne sont pas prêtes.
+ * - « bientot » : une pizza pas encore lancée doit être prête dans moins de `preAlertMinutes`.
  * Pas d'alerte pour une commande récupérée ou sans pizza.
+ * `pizzas` : pour ne regarder qu'une partie de la commande (ex. un créneau en cuisine).
  */
-export function orderAlert(order: Order, now: number, preAlertMinutes: number): OrderAlert {
-  if (order.collected) return null;
-  const pizzas = sortedPizzas(order);
-  if (pizzas.length === 0) return null;
+export function orderAlert(
+  order: Order,
+  now: number,
+  preAlertMinutes: number,
+  pizzas: Pizza[] = sortedPizzas(order),
+): OrderAlert {
+  if (order.collected || pizzas.length === 0) return null;
+  if (pizzas.every((p) => p.status === 'prete')) return null;
   const pickup = toMinutes(order.pickupTime);
-  const allReady = pizzas.every((p) => p.status === 'prete');
-  if (allReady) return null;
   if (now > pickup) return { kind: 'retard', minutes: now - pickup };
-  const anyWaiting = pizzas.some((p) => p.status === 'attente');
-  if (anyWaiting && pickup - now <= preAlertMinutes) return { kind: 'bientot', minutes: pickup - now };
+  const waiting = pizzas.filter((p) => p.status === 'attente');
+  if (waiting.length) {
+    const due = Math.min(...waiting.map((p) => pizzaDue(order, p)));
+    if (due - now <= preAlertMinutes) return { kind: 'bientot', minutes: Math.max(0, due - now) };
+  }
   return null;
 }
 

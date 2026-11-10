@@ -55,8 +55,10 @@ test('commande synchronisée entre Service et Cuisine, du four au retrait', asyn
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toHaveCSS('background-color', COLORS.attente);
   await expect(card).toContainText('1× Coca-Cola');
-  await expect(service.getByTestId('slot-19:10')).toContainText('G 1/3');
-  await expect(service.getByTestId('slot-19:10')).toContainText('P 1/2');
+  // Reine G 11,50 + Œuf 1,00 + Margherita P 8,00 + Coca 2,50
+  await expect(card.getByTestId('order-total')).toHaveText(/23,00/);
+  await expect(service.getByTestId('slot-19:10')).toContainText('2/5');
+  await expect(service.getByTestId('slot-19:10')).toContainText('1 G · 1 P');
 
   // --- La cuisine la reçoit instantanément ---
   const ticket = kitchen.getByTestId('ticket-Dupont');
@@ -127,25 +129,103 @@ test('alertes de retard et quotas par créneau', async ({ context }) => {
   await expect(kitchen.getByTestId('ticket-Leroy').getByTestId('badge-retard')).toBeVisible();
   await expect(service.getByTestId('order-Leroy')).toHaveClass(/alert-retard/);
 
-  // Quota 3 grandes par créneau : 4 grandes sur 19:20 → avertissement, puis on force.
+  // Capacité : 5 pizzas par créneau, toutes tailles confondues.
   await service.getByTestId('new-order').click();
   await service.getByTestId('input-name').fill('Petit');
   await service.getByTestId('pick-19:20').click();
   for (const name of ['Reine', 'Calzone', 'Savoyarde']) await addPizza(service, name);
-  await expect(service.getByTestId('capacity-warning')).toHaveCount(0);
-  await addPizza(service, 'Saumon');
-  await expect(service.getByTestId('capacity-warning')).toContainText('Grandes 4/3');
-  await expect(service.getByTestId('submit-order')).toHaveText('Forcer et enregistrer');
+  await addPizza(service, 'Saumon', { size: 'Petite 29' });
+  await expect(service.getByTestId('shift-warning')).toHaveCount(0);
   await service.getByTestId('submit-order').click();
-  await expect(service.getByTestId('slot-19:20')).toContainText('G 4/3');
+  await expect(service.getByTestId('slot-19:20')).toContainText('4/5');
+
+  // Commande de 3 pizzas sur 19:20 : 1 place → 2 pizzas basculent sur 19:30, retrait décalé.
+  await service.getByTestId('new-order').click();
+  await service.getByTestId('input-name').fill('Garcia');
+  await expect(service.getByTestId('pick-19:20')).toContainText('1 place');
+  await service.getByTestId('pick-19:20').click();
+  for (const name of ['Margherita', 'Reine', 'Orientale']) await addPizza(service, name);
+  await expect(service.getByTestId('shift-warning')).toContainText('1 pizza(s) à 19:20, 2 pizza(s) à 19:30');
+  await expect(service.getByTestId('shift-warning')).toContainText('retrait à 19:30');
+  await expect(service.getByTestId('submit-order')).toHaveText('Enregistrer (retrait 19:30)');
+  await expect(service.getByTestId('force-order')).toHaveText('Forcer tout sur 19:20');
+  await service.getByTestId('submit-order').click();
+
+  const garcia = service.getByTestId('order-Garcia');
+  await expect(garcia.locator('.pickup')).toHaveText('19:30');
+  await expect(garcia).toContainText('demandé 19:20');
+  await expect(garcia.locator('.badge-shift')).toHaveCount(2);
+  await expect(service.getByTestId('slot-19:20')).toContainText('5/5');
+  await expect(service.getByTestId('slot-19:30')).toContainText('2/5');
+  // En cuisine, la commande apparaît dans les deux créneaux, chacun avec ses pizzas.
+  await expect(kitchen.locator('[data-testid="ticket-Garcia"][data-slot="19:20"] [data-testid="kitchen-pizza"]')).toHaveCount(1);
+  await expect(kitchen.locator('[data-testid="ticket-Garcia"][data-slot="19:30"] [data-testid="kitchen-pizza"]')).toHaveCount(2);
+  await expect(kitchen.locator('[data-testid="ticket-Garcia"][data-slot="19:30"]')).toContainText('1 pizza(s) sur 19:20');
+
+  // Créneau complet : le bouton « Forcer » garde la pizza sur 19:20 malgré le quota.
+  await service.getByTestId('new-order').click();
+  await service.getByTestId('input-name').fill('Roux');
+  await expect(service.getByTestId('pick-19:20')).toContainText('complet');
+  await service.getByTestId('pick-19:20').click();
+  await addPizza(service, 'Calzone');
+  await expect(service.getByTestId('shift-warning')).toContainText('complet');
+  await service.getByTestId('force-order').click();
+  await expect(service.getByTestId('order-Roux').locator('.pickup')).toHaveText('19:20');
+  await expect(service.getByTestId('slot-19:20')).toContainText('6/5');
   await expect(service.getByTestId('slot-19:20')).toHaveClass(/level-depasse/);
 
-  // Le gérant augmente le quota de ce créneau (affluence) → synchronisé en cuisine.
+  // Le gérant augmente la capacité de ce créneau (affluence) → synchronisé en cuisine.
   await service.getByTestId('slot-19:20').click();
-  await service.getByRole('button', { name: 'Plus grandes' }).click();
+  await service.getByRole('button', { name: 'Plus pizzas' }).click();
+  await service.getByRole('button', { name: 'Plus pizzas' }).click();
   await service.getByRole('button', { name: 'OK' }).click();
-  await expect(service.getByTestId('slot-19:20')).toContainText('G 4/4');
-  await expect(kitchen.getByTestId('kitchen-slot-19:20')).toContainText('Grandes 4/4');
+  await expect(service.getByTestId('slot-19:20')).toContainText('6/7');
+  await expect(kitchen.getByTestId('kitchen-slot-19:20')).toContainText('6/7 pizzas');
+});
+
+test('récapitulatif des ventes et export du fichier', async ({ context }) => {
+  const { service } = await openScreens(context);
+
+  await service.getByTestId('new-order').click();
+  await service.getByTestId('input-name').fill('Martin');
+  await service.getByTestId('pick-19:10').click();
+  await addPizza(service, 'Reine', { supp: 'Chèvre' });
+  await addPizza(service, 'Reine');
+  await service.getByRole('button', { name: 'Plus Coca-Cola' }).click();
+  await expect(service.getByTestId('form-total')).toHaveText(/27,00/); // 11,50 + 1,50 + 11,50 + 2,50
+  await service.getByRole('group', { name: 'Payée' }).getByRole('button', { name: 'Oui' }).click();
+  await service.getByTestId('submit-order').click();
+
+  await service.getByTestId('new-order').click();
+  await service.getByTestId('input-name').fill('Bernard');
+  await service.getByTestId('pick-19:30').click();
+  await addPizza(service, 'Margherita', { size: 'Petite 29' });
+  await service.getByRole('button', { name: 'Plus Tiramisu' }).click();
+  await service.getByTestId('submit-order').click();
+
+  await service.getByTestId('open-sales').click();
+  await expect(service.getByRole('heading', { name: 'Ventes' })).toBeVisible();
+  await expect(service.getByTestId('sales-total')).toHaveText(/39,00/); // 27,00 + 8,00 + 4,00
+  const table = service.getByTestId('sales-table');
+  await expect(table.locator('tr', { hasText: 'Grande 33' })).toContainText('2');
+  await expect(table).toContainText('Chèvre');
+  await expect(table).toContainText('Tiramisu');
+  await expect(service.getByText('1 commande(s) non marquée(s) payée(s)')).toBeVisible();
+
+  // Service du midi : aucune commande.
+  await service.getByRole('button', { name: /Midi/ }).click();
+  await expect(service.getByText('Aucune commande sur cette période.')).toBeVisible();
+  await service.getByRole('button', { name: /Soir/ }).click();
+
+  const [file] = await Promise.all([service.waitForEvent('download'), service.getByTestId('export-sales').click()]);
+  expect(file.suggestedFilename()).toBe('ventes-2026-11-03-soir.csv');
+  const csv = (await import('node:fs')).readFileSync(await file.path(), 'utf8');
+  expect(csv).toContain('Période;Soir (18:00–22:30)');
+  expect(csv).toContain('Total des ventes (€);39,00');
+  expect(csv).toContain('Pizzas;Reine;Grande 33;2;11,50;23,00');
+  expect(csv).toContain('Suppléments;Chèvre;;1;1,50;1,50');
+  expect(csv).toContain('Desserts;Tiramisu;;1;4,00;4,00');
+  expect(csv).toContain('19:30;Bernard;Comptoir;P Margherita · 1× Tiramisu;12,00;Non;Non');
 });
 
 test('modifier une commande ne remet pas à zéro le travail de la cuisine', async ({ context }) => {
@@ -169,6 +249,8 @@ test('modifier une commande ne remet pas à zéro le travail de la cuisine', asy
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toHaveAttribute('data-status', 'four');
   await expect(rows.nth(1)).toHaveAttribute('data-status', 'attente');
-  await expect(service.getByTestId('order-Moreau')).toContainText('19:40');
+  await expect(service.getByTestId('order-Moreau').locator('.pickup')).toHaveText('19:40');
+  // La pizza déjà au four reste sur son créneau d'origine.
+  await expect(rows.first()).toContainText('créneau 19:30');
   await expect(kitchen.getByTestId('ticket-Moreau').getByTestId('kitchen-pizza')).toHaveCount(2);
 });

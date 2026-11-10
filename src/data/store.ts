@@ -1,4 +1,4 @@
-import type { DayQuotas, Order, PizzaStatus, Quota, Role, Settings } from '../domain/types';
+import type { DayQuotas, Order, PizzaStatus, Role, Settings } from '../domain/types';
 
 export interface DaySnapshot {
   orders: Order[];
@@ -28,8 +28,10 @@ export interface Store {
   setPaid(orderId: string, paid: boolean): Promise<void>;
   setCollected(orderId: string, collected: boolean): Promise<void>;
   /** `null` = revenir au quota par défaut pour ce créneau. */
-  setSlotQuota(serviceDate: string, slot: string, quota: Quota | null): Promise<void>;
+  setSlotQuota(serviceDate: string, slot: string, quota: number | null): Promise<void>;
   saveSettings(settings: Settings): Promise<void>;
+  /** Commandes d'un jour donné (pour le récapitulatif des ventes d'un jour passé). */
+  fetchDay(serviceDate: string): Promise<Order[]>;
 }
 
 export interface AuthApi {
@@ -50,6 +52,10 @@ export const PIZZA_CONTENT_FIELDS = [
   'note',
   'cut',
   'olives',
+  'slot',
+  'custom',
+  'basePrice',
+  'suppPrices',
 ] as const;
 
 /** Applique une modification de commande en conservant les statuts actuels des pizzas. */
@@ -66,6 +72,7 @@ export function mergeOrderContent(current: Order, prev: Order, next: Order): Ord
   return {
     ...current,
     pickupTime: next.pickupTime,
+    requestedTime: next.requestedTime,
     slot: next.slot,
     customerName: next.customerName,
     origin: next.origin,

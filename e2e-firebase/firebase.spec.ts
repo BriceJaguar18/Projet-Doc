@@ -66,6 +66,7 @@ test('synchronisation Service ↔ Cuisine via Firestore', async ({ browser }) =>
   const card = service.getByTestId('order-Durand');
   const row = card.getByTestId('pizza-row').first();
   await expect(row).toHaveAttribute('data-status', 'attente');
+  await expect(card.getByTestId('order-total')).toHaveText(/13,00/); // Reine G 11,50 + Chèvre 1,50
 
   const ticket = kitchen.getByTestId('ticket-Durand');
   await expect(ticket).toContainText('+ Chèvre');
@@ -84,6 +85,42 @@ test('synchronisation Service ↔ Cuisine via Firestore', async ({ browser }) =>
   await service.reload();
   await service.getByRole('button', { name: /Récupérées/ }).click();
   await expect(service.getByTestId('order-Durand')).toHaveClass(/collected/);
+  await expect(service.getByTestId('order-Durand').getByTestId('order-total')).toHaveText(/13,00/);
+
+  // Récapitulatif des ventes à partir des données du cloud.
+  await service.getByTestId('open-sales').click();
+  await expect(service.getByTestId('sales-total')).toHaveText(/13,00/);
+  await expect(service.getByTestId('sales-table')).toContainText('Chèvre');
+});
+
+test('report sur le créneau suivant et prix modifiés dans les réglages', async ({ browser }) => {
+  const service = await tablet(browser, 'service');
+  const kitchen = await tablet(browser, 'cuisine');
+
+  // Le prix d'une Margherita grande passe à 9,90 € et la capacité par défaut à 2 pizzas.
+  await service.getByRole('button', { name: 'Réglages' }).click();
+  await service.getByLabel('Prix Margherita grande').fill('9,90');
+  await service.getByRole('button', { name: 'Moins pizzas par créneau' }).click();
+  await service.getByRole('button', { name: 'Moins pizzas par créneau' }).click();
+  await service.getByRole('button', { name: 'Moins pizzas par créneau' }).click();
+  await service.getByRole('button', { name: 'Enregistrer' }).click();
+
+  await service.getByTestId('new-order').click();
+  await service.getByTestId('input-name').fill('Faure');
+  await service.locator('input[type="time"]').fill('23:30');
+  for (let i = 0; i < 3; i++) await service.locator('.menu-btn', { hasText: 'Margherita' }).click();
+  await expect(service.getByTestId('form-total')).toHaveText(/29,70/);
+  await expect(service.getByTestId('shift-warning')).toContainText('retrait à 23:40');
+  await service.getByTestId('submit-order').click();
+
+  await expect(service.getByTestId('order-Faure').locator('.pickup')).toHaveText('23:40');
+  await expect(kitchen.locator('[data-testid="ticket-Faure"][data-slot="23:30"] [data-testid="kitchen-pizza"]')).toHaveCount(2);
+  await expect(kitchen.locator('[data-testid="ticket-Faure"][data-slot="23:40"] [data-testid="kitchen-pizza"]')).toHaveCount(1);
+
+  // Remettre la capacité par défaut pour les autres tests.
+  await service.getByRole('button', { name: 'Réglages' }).click();
+  for (let i = 0; i < 3; i++) await service.getByRole('button', { name: 'Plus pizzas par créneau' }).click();
+  await service.getByRole('button', { name: 'Enregistrer' }).click();
 });
 
 test('règles de sécurité : la cuisine ne modifie que les pizzas', async () => {

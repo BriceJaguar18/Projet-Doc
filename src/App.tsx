@@ -7,6 +7,7 @@ import { Login } from './screens/Login';
 import { KitchenScreen } from './screens/cuisine/KitchenScreen';
 import { SettingsScreen } from './screens/reglages/SettingsScreen';
 import { ServiceScreen } from './screens/service/ServiceScreen';
+import { SalesScreen } from './screens/ventes/SalesScreen';
 
 export function App({ store, auth }: { store: Store; auth: AuthApi }) {
   const [role, setRole] = useState<Role | null>(null);
@@ -34,7 +35,15 @@ export function App({ store, auth }: { store: Store; auth: AuthApi }) {
 
   return (
     <KioskProvider store={store} auth={auth} role={role}>
-      {role === 'cuisine' ? <KitchenScreen /> : route === 'reglages' ? <SettingsScreen /> : <ServiceScreen />}
+      {role === 'cuisine' ? (
+        <KitchenScreen />
+      ) : route === 'reglages' ? (
+        <SettingsScreen />
+      ) : route === 'ventes' ? (
+        <SalesScreen />
+      ) : (
+        <ServiceScreen />
+      )}
     </KioskProvider>
   );
 }

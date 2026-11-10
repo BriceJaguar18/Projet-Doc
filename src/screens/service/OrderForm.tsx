@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useKiosk } from '../../KioskContext';
 import { Segmented, Stepper } from '../../components/ui';
+import { formatPrice, itemPrice, orderTotal, priceItem, pricePizza } from '../../domain/pricing';
 import {
   BASE_LABEL,
   STATUS_LABEL,
-  checkCapacity,
-  countBySize,
   fromMinutes,
   newId,
+  pizzaSlot,
+  planPizzas,
   quotaFor,
+  requestedTimeOf,
+  slotLoad,
   slotOf,
   slotsForDay,
   sortedPizzas,
@@ -20,6 +23,7 @@ import { PizzaEditor } from './PizzaEditor';
 interface Draft {
   customerName: string;
   origin: string;
+  /** Heure demandée par le client. */
   pickupTime: string | null;
   paid: boolean;
   note: string;
@@ -42,7 +46,7 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
       ? {
           customerName: initial.customerName,
           origin: initial.origin,
-          pickupTime: initial.pickupTime,
+          pickupTime: requestedTimeOf(initial),
           paid: initial.paid,
           note: initial.note,
           pizzas: sortedPizzas(initial),
@@ -65,7 +69,7 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
 
   /* ---------------------------- Créneaux ---------------------------- */
 
-  const need = countBySize(draft.pizzas);
+  const need = draft.pizzas.length;
   const selectedSlot = draft.pickupTime ? slotOf(draft.pickupTime) : null;
   const slots = useMemo(() => {
     const list = slotsForDay(settings.openingHours).filter((s) => toMinutes(s) + 10 > nowMin);
@@ -73,13 +77,30 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
     return list.sort((a, b) => toMinutes(a) - toMinutes(b));
   }, [settings.openingHours, nowMin, selectedSlot]);
 
-  const capacity = selectedSlot
-    ? checkCapacity(orders, selectedSlot, quotaFor(selectedSlot, settings, dayQuotas), need, initial?.id)
+  /** Places libres sur un créneau, sans compter cette commande. */
+  const freeIn = (slot: string) =>
+    quotaFor(slot, settings, dayQuotas) - slotLoad(orders, slot, initial?.id ?? undefined).total;
+
+  // En modification, une pizza déjà lancée en cuisine garde son créneau.
+  const pinned: Record<string, string> = {};
+  if (initial) {
+    for (const p of Object.values(initial.pizzas)) {
+      if (p.status !== 'attente') pinned[p.id] = pizzaSlot(initial, p);
+    }
+  }
+  const planArgs = draft.pickupTime
+    ? { orders, settings, dayQuotas, requestedTime: draft.pickupTime, pizzas: draft.pizzas, pinned, excludeOrderId: initial?.id }
     : null;
+  const plan = planArgs ? planPizzas(planArgs) : null;
+  const forcedPlan = planArgs ? planPizzas({ ...planArgs, force: true }) : null;
+
+  const pricedPizzas = draft.pizzas.map((p) => pricePizza(p, settings));
+  const pricedItems = draft.items.map((it) => priceItem(it, settings));
+  const total = orderTotal({ pizzas: Object.fromEntries(pricedPizzas.map((p) => [p.id, p])), items: pricedItems });
 
   /* ----------------------------- Pizzas ----------------------------- */
 
-  const addPizza = (menu: MenuPizza | { name: string; base: 'tomate' }) => {
+  const addPizza = (menu: MenuPizza | { name: string; base: 'tomate' }, custom = false) => {
     const p: Pizza = {
       id: newId(),
       position: draft.pizzas.length,
@@ -92,6 +113,7 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
       cut: settings.defaultCut,
       olives: settings.defaultOlives,
       status: 'attente',
+      ...(custom ? { custom: true, basePrice: 0 } : {}),
     };
     set({ pizzas: [...draft.pizzas, p] });
     setExpanded(p.id);
@@ -122,20 +144,24 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
 
   /* ---------------------------- Validation ---------------------------- */
 
-  const submit = () => {
+  const submit = (force: boolean) => {
     const errs: string[] = [];
     if (!draft.customerName.trim()) errs.push('Indiquez le nom du client.');
     if (!draft.pickupTime) errs.push("Choisissez l'heure de retrait.");
     if (draft.pizzas.length === 0 && draft.items.length === 0) errs.push('Ajoutez au moins un produit.');
     setErrors(errs);
-    if (errs.length || !draft.pickupTime) return;
+    const chosen = force ? forcedPlan : plan;
+    if (errs.length || !draft.pickupTime || !chosen) return;
 
-    const pizzas = Object.fromEntries(draft.pizzas.map((p, i) => [p.id, { ...p, position: i }]));
-    const items = CATEGORIES.flatMap((c) => draft.items.filter((i) => i.category === c.key));
+    const pizzas = Object.fromEntries(
+      pricedPizzas.map((p, i) => [p.id, { ...p, position: i, slot: chosen.slots[p.id] }]),
+    );
+    const items = CATEGORIES.flatMap((c) => pricedItems.filter((i) => i.category === c.key));
     const content = {
       customerName: draft.customerName.trim(),
       origin: draft.origin,
-      pickupTime: draft.pickupTime,
+      requestedTime: draft.pickupTime,
+      pickupTime: chosen.pickupTime,
       slot: slotOf(draft.pickupTime),
       paid: draft.paid,
       note: draft.note.trim(),
@@ -148,7 +174,11 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
       toast('Commande modifiée');
     } else {
       run(store.createOrder({ id: newId(), serviceDate: date, collected: false, createdAt: Date.now(), ...content }));
-      toast(`Commande de ${content.customerName} enregistrée`);
+      toast(
+        chosen.pickupTime !== draft.pickupTime
+          ? `Commande de ${content.customerName} enregistrée : retrait à ${chosen.pickupTime}`
+          : `Commande de ${content.customerName} enregistrée`,
+      );
     }
     onClose();
   };
@@ -203,23 +233,18 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
             )}
             <div className="slot-grid">
               {slots.map((slot) => {
-                const c = checkCapacity(orders, slot, quotaFor(slot, settings, dayQuotas), need, initial?.id);
-                const free = {
-                  G: c.quota.G - (c.load.G - need.G),
-                  P: c.quota.P - (c.load.P - need.P),
-                };
+                const free = freeIn(slot);
+                const fit = need > 0 && free >= need ? 'fits' : free > 0 ? 'partial' : 'full';
                 return (
                   <button
                     key={slot}
                     type="button"
-                    className={`slot-pick ${c.over ? 'full' : 'fits'} ${slot === selectedSlot ? 'on' : ''}`}
+                    className={`slot-pick ${fit} ${slot === selectedSlot ? 'on' : ''}`}
                     onClick={() => set({ pickupTime: slot })}
                     data-testid={`pick-${slot}`}
                   >
                     <strong>{slot}</strong>
-                    <small>
-                      G {Math.max(0, free.G)} · P {Math.max(0, free.P)}
-                    </small>
+                    <small>{free > 0 ? `${free} place${free > 1 ? 's' : ''}` : 'complet'}</small>
                   </button>
                 );
               })}
@@ -269,7 +294,7 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
                   className="btn btn-outline"
                   disabled={!customPizza.trim()}
                   onClick={() => {
-                    addPizza({ name: customPizza.trim(), base: 'tomate' });
+                    addPizza({ name: customPizza.trim(), base: 'tomate' }, true);
                     setCustomPizza('');
                   }}
                 >
@@ -286,13 +311,15 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
                   pizza={p}
                   menu={settings.menu.pizzas.find((m) => m.name === p.name)}
                   supplements={settings.menu.supplements}
+                  price={pricedPizzas[i]?.basePrice ?? 0}
+                  slotLabel={plan && plan.shifted && plan.slots[p.id] !== plan.requestedSlot ? plan.slots[p.id] : null}
                   expanded={expanded === p.id}
                   onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
                   onChange={(patch) => updatePizza(p.id, patch)}
                   onDuplicate={() => duplicatePizza(p)}
                   onRemove={() => removePizza(p.id)}
                   statusLabel={initial?.pizzas[p.id] ? STATUS_LABEL[initial.pizzas[p.id].status] : null}
-                  custom={!menuNames.has(p.name)}
+                  custom={!!p.custom || !menuNames.has(p.name)}
                 />
               ))}
             </ol>
@@ -305,7 +332,7 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
               {CATEGORIES.map((c) => {
                 const names = [
                   ...new Set([
-                    ...settings.menu[c.menuKey],
+                    ...settings.menu[c.menuKey].map((x) => x.name),
                     ...draft.items.filter((i) => i.category === c.key).map((i) => i.name),
                   ]),
                 ];
@@ -314,7 +341,10 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
                     <h4>{c.label}</h4>
                     {names.map((name) => (
                       <div key={name} className={`other-line ${qtyOf(c.key, name) ? 'on' : ''}`}>
-                        <span>{name}</span>
+                        <span>
+                          {name}{' '}
+                          <small className="price">{formatPrice(itemPrice(settings, c.key, name) ?? 0)}</small>
+                        </span>
                         <Stepper
                           label={name}
                           value={qtyOf(c.key, name)}
@@ -356,20 +386,19 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
 
         <footer className="modal-foot">
           <div className="foot-info">
-            {capacity && capacity.over ? (
-              <span className="capacity-warning" data-testid="capacity-warning">
-                ⚠ Créneau {selectedSlot} complet : Grandes {capacity.load.G}/{capacity.quota.G} · Petites{' '}
-                {capacity.load.P}/{capacity.quota.P}. Choisissez un autre créneau ou forcez.
+            {plan && need > 0 && plan.shifted ? (
+              <span className="shift-warning" data-testid="shift-warning">
+                ⚠ Créneau {plan.requestedSlot} : {plan.freeInRequested > 0 ? `plus que ${plan.freeInRequested} place(s)` : 'complet'}.{' '}
+                {plan.perSlot.map((x) => `${x.count} pizza(s) à ${x.slot}`).join(', ')} →{' '}
+                <strong>retrait à {plan.pickupTime}</strong>
               </span>
-            ) : capacity ? (
+            ) : plan && need > 0 ? (
               <span className="capacity-ok">
-                Créneau {selectedSlot} : Grandes {capacity.load.G}/{capacity.quota.G} · Petites {capacity.load.P}/
-                {capacity.quota.P}
+                Créneau {plan.requestedSlot} : {quotaFor(plan.requestedSlot, settings, dayQuotas) - freeIn(plan.requestedSlot) + need}/
+                {quotaFor(plan.requestedSlot, settings, dayQuotas)} pizzas avec cette commande
               </span>
             ) : (
-              <span className="muted">
-                {need.G} grande(s), {need.P} petite(s)
-              </span>
+              <span className="muted">{need} pizza(s)</span>
             )}
             {errors.map((e) => (
               <span key={e} className="form-error">
@@ -377,12 +406,16 @@ export function OrderForm({ initial, onClose }: { initial: Order | null; onClose
               </span>
             ))}
           </div>
-          <button
-            className={`btn btn-lg ${capacity?.over ? 'btn-warning' : 'btn-primary'}`}
-            onClick={submit}
-            data-testid="submit-order"
-          >
-            {capacity?.over ? 'Forcer et enregistrer' : 'Enregistrer'}
+          <span className="order-total-lg" data-testid="form-total">
+            Total {formatPrice(total)}
+          </span>
+          {plan && need > 0 && plan.shifted && (
+            <button className="btn btn-lg btn-warning" onClick={() => submit(true)} data-testid="force-order">
+              Forcer tout sur {plan.requestedSlot}
+            </button>
+          )}
+          <button className="btn btn-lg btn-primary" onClick={() => submit(false)} data-testid="submit-order">
+            {plan && need > 0 && plan.shifted ? `Enregistrer (retrait ${plan.pickupTime})` : 'Enregistrer'}
           </button>
         </footer>
       </div>

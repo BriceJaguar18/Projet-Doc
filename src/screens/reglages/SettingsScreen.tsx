@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useKiosk } from '../../KioskContext';
-import { Segmented, Stepper, TopBar } from '../../components/ui';
-import type { Base, MenuPizza, OpeningRange, Settings } from '../../domain/types';
+import { PriceInput, Segmented, Stepper, TopBar } from '../../components/ui';
+import type { Base, MenuPizza, OpeningRange, PricedItem, Settings } from '../../domain/types';
 import { navigate } from '../../hooks/useHashRoute';
 import { DemoTools } from '../DemoTools';
 
@@ -44,6 +44,61 @@ function ListEditor(props: { items: string[]; onChange: (items: string[]) => voi
   );
 }
 
+/** Liste d'articles avec leur prix (suppléments, boissons, kiosquitos, desserts). */
+function PricedListEditor(props: {
+  id: string;
+  items: PricedItem[];
+  onChange: (items: PricedItem[]) => void;
+  placeholder: string;
+}) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState(0);
+  const set = (i: number, patch: Partial<PricedItem>) =>
+    props.onChange(props.items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  const add = () => {
+    const v = name.trim();
+    if (v && !props.items.some((it) => it.name === v)) props.onChange([...props.items, { name: v, price }]);
+    setName('');
+    setPrice(0);
+  };
+  return (
+    <div className="priced-list">
+      {props.items.map((it, i) => (
+        <div key={i} className="priced-row">
+          <input
+            id={`${props.id}-nom-${i}`}
+            aria-label="Nom"
+            value={it.name}
+            onChange={(e) => set(i, { name: e.target.value })}
+          />
+          <PriceInput id={`${props.id}-prix-${i}`} label={`Prix de ${it.name}`} value={it.price} onChange={(p) => set(i, { price: p })} />
+          <button
+            type="button"
+            className="btn btn-ghost btn-danger"
+            aria-label={`Retirer ${it.name}`}
+            onClick={() => props.onChange(props.items.filter((_, j) => j !== i))}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <div className="priced-row priced-add">
+        <input
+          id={`${props.id}-nouveau`}
+          placeholder={props.placeholder}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <PriceInput id={`${props.id}-nouveau-prix`} label="Prix du nouvel article" value={price} onChange={setPrice} />
+        <button type="button" className="btn btn-outline" onClick={add} disabled={!name.trim()}>
+          Ajouter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen() {
   const { day, store, run, toast, auth, confirm } = useKiosk();
   const [s, setS] = useState<Settings>(day.settings);
@@ -65,10 +120,17 @@ export function SettingsScreen() {
     update({ openingHours: s.openingHours.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
 
   const save = () => {
+    const clean = (list: PricedItem[]) =>
+      list
+        .map((it) => ({ ...it, name: it.name.trim() }))
+        .filter((it, i, all) => it.name && all.findIndex((x) => x.name === it.name) === i);
     const cleaned: Settings = {
       ...s,
       menu: {
-        ...s.menu,
+        supplements: clean(s.menu.supplements),
+        boissons: clean(s.menu.boissons),
+        kiosquitos: clean(s.menu.kiosquitos),
+        desserts: clean(s.menu.desserts),
         pizzas: s.menu.pizzas
           .map((p) => ({ ...p, name: p.name.trim(), ingredients: p.ingredients.map((x) => x.trim()).filter(Boolean) }))
           .filter((p) => p.name),
@@ -103,23 +165,12 @@ export function SettingsScreen() {
         <section className="card">
           <h2>Planning de production</h2>
           <div className="settings-row">
-            <span>Quota par créneau de 10 min — Grandes</span>
-            <Stepper
-              label="grandes"
-              value={s.defaultQuota.G}
-              onChange={(G) => update({ defaultQuota: { ...s.defaultQuota, G } })}
-            />
-          </div>
-          <div className="settings-row">
-            <span>Quota par créneau de 10 min — Petites</span>
-            <Stepper
-              label="petites"
-              value={s.defaultQuota.P}
-              onChange={(P) => update({ defaultQuota: { ...s.defaultQuota, P } })}
-            />
+            <span>Pizzas maximum par créneau de 10 min (toutes tailles)</span>
+            <Stepper label="pizzas par créneau" value={s.defaultQuota} onChange={(defaultQuota) => update({ defaultQuota })} />
           </div>
           <p className="muted">
-            Pour un rush ponctuel, touchez directement un créneau dans le bandeau de l'écran Service.
+            Si une commande dépasse les places restantes, les pizzas en trop passent sur le créneau suivant. Pour un
+            rush ponctuel, touchez directement un créneau dans le bandeau de l'écran Service.
           </p>
           <div className="settings-row">
             <span>Pré-alerte « À lancer » (minutes avant le retrait)</span>
@@ -184,6 +235,8 @@ export function SettingsScreen() {
                 <th>Nom</th>
                 <th>Base</th>
                 <th>Ingrédients (séparés par des virgules, pour pouvoir les retirer)</th>
+                <th>Prix Grande</th>
+                <th>Prix Petite</th>
                 <th />
               </tr>
             </thead>
@@ -211,6 +264,22 @@ export function SettingsScreen() {
                     />
                   </td>
                   <td>
+                    <PriceInput
+                      id={`pizza-${i}-prix-g`}
+                      label={`Prix ${p.name} grande`}
+                      value={p.priceG}
+                      onChange={(priceG) => setPizza(i, { priceG })}
+                    />
+                  </td>
+                  <td>
+                    <PriceInput
+                      id={`pizza-${i}-prix-p`}
+                      label={`Prix ${p.name} petite`}
+                      value={p.priceP}
+                      onChange={(priceP) => setPizza(i, { priceP })}
+                    />
+                  </td>
+                  <td>
                     <button
                       className="btn btn-ghost btn-danger"
                       aria-label={`Retirer ${p.name}`}
@@ -225,7 +294,7 @@ export function SettingsScreen() {
           </table>
           <button
             className="btn btn-outline"
-            onClick={() => updateMenu({ pizzas: [...s.menu.pizzas, { name: '', base: 'tomate', ingredients: [] }] })}
+            onClick={() => updateMenu({ pizzas: [...s.menu.pizzas, { name: '', base: 'tomate', ingredients: [], priceG: 0, priceP: 0 }] })}
           >
             + Ajouter une pizza
           </button>
@@ -233,7 +302,8 @@ export function SettingsScreen() {
 
         <section className="card">
           <h2>Suppléments</h2>
-          <ListEditor
+          <PricedListEditor
+            id="supplements"
             items={s.menu.supplements}
             onChange={(supplements) => updateMenu({ supplements })}
             placeholder="Nouveau supplément"
@@ -241,11 +311,17 @@ export function SettingsScreen() {
         </section>
         <section className="card">
           <h2>Boissons</h2>
-          <ListEditor items={s.menu.boissons} onChange={(boissons) => updateMenu({ boissons })} placeholder="Nouvelle boisson" />
+          <PricedListEditor
+            id="boissons"
+            items={s.menu.boissons}
+            onChange={(boissons) => updateMenu({ boissons })}
+            placeholder="Nouvelle boisson"
+          />
         </section>
         <section className="card">
           <h2>Kiosquitos</h2>
-          <ListEditor
+          <PricedListEditor
+            id="kiosquitos"
             items={s.menu.kiosquitos}
             onChange={(kiosquitos) => updateMenu({ kiosquitos })}
             placeholder="Nouveau kiosquito"
@@ -253,7 +329,12 @@ export function SettingsScreen() {
         </section>
         <section className="card">
           <h2>Desserts</h2>
-          <ListEditor items={s.menu.desserts} onChange={(desserts) => updateMenu({ desserts })} placeholder="Nouveau dessert" />
+          <PricedListEditor
+            id="desserts"
+            items={s.menu.desserts}
+            onChange={(desserts) => updateMenu({ desserts })}
+            placeholder="Nouveau dessert"
+          />
         </section>
 
         <section className="card">
